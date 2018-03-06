@@ -4,6 +4,10 @@ import errno
 import time
 import json
 from base64 import b64decode
+
+import pem
+from OpenSSL import crypto
+from OpenSSL.crypto import FILETYPE_PEM
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -32,6 +36,14 @@ class Handler(FileSystemEventHandler):
                 cert = fullchain[0:start]
                 chain = fullchain[start:]
 
+                # Create PKCS#12 certificate archive
+                pkcs12 = crypto.PKCS12()
+                pkcs12.set_privatekey(crypto.load_privatekey(crypto.FILETYPE_PEM, privatekey))
+                pkcs12.set_certificate(crypto.load_certificate(crypto.FILETYPE_PEM, cert))
+                ca_certs = [crypto.load_certificate(crypto.FILETYPE_PEM, c.as_bytes()) for c in pem.parse(bytes(chain, encoding='utf-8'))]
+                pkcs12.set_ca_certificates(ca_certs)
+                pfx = pkcs12.export()
+
                 # Create domain directory if it doesn't exist
                 directory = 'certs/' + c['Certificate']['Domain'] + '/'
                 try:
@@ -43,15 +55,14 @@ class Handler(FileSystemEventHandler):
                 # Write private key, certificate and chain to file
                 with open(directory + 'privkey.pem', 'w') as f:
                     f.write(privatekey)
-
                 with open(directory + 'cert.pem', 'w') as f:
                     f.write(cert)
-
                 with open(directory + 'chain.pem', 'w') as f:
                     f.write(chain)
-
                 with open(directory + 'fullchain.pem', 'w') as f:
                     f.write(fullchain)
+                with open(directory + 'cert.pfx', 'wb') as f:
+                    f.write(pfx)
 
                 # Write private key, certificate and chain to flat files
                 directory = 'certs_flat/'
@@ -62,6 +73,8 @@ class Handler(FileSystemEventHandler):
                     f.write(fullchain)
                 with open(directory + c['Certificate']['Domain'] + '.chain.pem', 'w') as f:
                     f.write(chain)
+                with open(directory + c['Certificate']['Domain'] + '.pfx', 'wb') as f:
+                    f.write(pfx)
 
                 if c['Domains']['SANs']:
                     for name in c['Domains']['SANs']:
@@ -71,6 +84,8 @@ class Handler(FileSystemEventHandler):
                             f.write(fullchain)
                         with open(directory + name + '.chain.pem', 'w') as f:
                             f.write(chain)
+                        with open(directory + name + '.pfx', 'wb') as f:
+                            f.write(pfx)
 
                 print('Extracted certificate for: ' + c['Domains']['Main'] + (', ' + ', '.join(c['Domains']['SANs']) if c['Domains']['SANs'] else ''))
 

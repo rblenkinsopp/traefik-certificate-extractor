@@ -1,5 +1,10 @@
 # Use Python on Alpine Linux as base image
-FROM python:alpine
+FROM alpine
+
+# Install pyOpenSSL
+RUN apk add --no-cache \
+    python3 \
+    py3-openssl
 
 # Create working directory
 RUN mkdir -p /app
